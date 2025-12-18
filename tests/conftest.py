@@ -16,8 +16,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings, get_settings
-from app.database.connection import DatabaseConnection
+from app.database.connection import DatabaseConnection, _db_connection
 from app.database.models import Base
+from app.database.parameter_manager import ParameterManager
 
 
 @pytest.fixture(scope="session")
@@ -45,35 +46,8 @@ def test_settings() -> Settings:
     return settings
 
 
-@pytest.fixture
-def temp_test_db() -> Generator[Path, None, None]:
-    """
-    Provide a temporary database file for testing.
-
-    Yields:
-        Path to temporary database file
-    """
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-        db_path = Path(f.name)
-
-    yield db_path
-
-    # Cleanup
-    if db_path.exists():
-        db_path.unlink()
-
-
 @pytest.fixture(scope="function")
-def reset_db_connection():
-    """Reset the global database connection singleton."""
-    import app.database.connection
-    app.database.connection._db_connection = None
-    yield
-    app.database.connection._db_connection = None
-
-
-@pytest.fixture(scope="function")
-def test_db_connection(monkeypatch, reset_db_connection) -> Generator[DatabaseConnection, None, None]:
+def test_db_connection(monkeypatch) -> Generator[DatabaseConnection, None, None]:
     """
     Provide a real DatabaseConnection for integration tests.
     Uses a temporary SQLite database file for each test function.
@@ -88,12 +62,16 @@ def test_db_connection(monkeypatch, reset_db_connection) -> Generator[DatabaseCo
         get_settings.cache_clear()
         monkeypatch.setattr("app.config.get_settings", lambda: test_settings)
         
+        # Reset the global singleton
+        global _db_connection
+        _db_connection = None
+        
         db = DatabaseConnection()
-        try:
-            db.create_tables()
-            yield db
-        finally:
-            db.close()
+        db.create_tables()
+
+        yield db
+
+        db.close()
 
 
 @pytest.fixture
@@ -106,42 +84,6 @@ def test_db_session(test_db_connection: DatabaseConnection) -> Generator[Session
     """
     with test_db_connection.get_session() as session:
         yield session
-
-
-@pytest.fixture
-def mock_db_connection() -> Generator[MagicMock, None, None]:
-    """
-    Provide a mock database connection.
-
-    Yields:
-        Mock database connection for testing
-    """
-    mock_conn = MagicMock(spec=DatabaseConnection)
-    mock_session = MagicMock(spec=Session)
-
-    mock_conn.get_session.return_value.__enter__.return_value = mock_session
-
-    yield mock_conn
-
-
-@pytest.fixture
-def in_memory_db() -> Generator[sessionmaker[Session], None, None]:
-    """
-    Provide an in-memory SQLite database for testing.
-
-    Creates tables and provides a session factory for tests.
-
-    Yields:
-        SQLAlchemy session factory
-    """
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-
-    SessionFactory = sessionmaker(bind=engine, expire_on_commit=False)
-
-    yield SessionFactory
-
-    engine.dispose()
 
 
 @pytest.fixture

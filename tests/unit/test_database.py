@@ -5,12 +5,23 @@ Tests database connection management, parameter operations, and ORM models.
 """
 
 
+import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.database.connection import DatabaseConnection
 from app.database.models import PipelineParameter
 from app.database.parameter_manager import ParameterManager
+
+
+@pytest.fixture(scope="function")
+def clean_db(test_db_connection: DatabaseConnection):
+    """
+    Provide a clean database for each test.
+    """
+    test_db_connection.drop_tables()
+    test_db_connection.create_tables()
+    yield test_db_connection
 
 
 class TestDatabaseConnection:
@@ -52,14 +63,14 @@ class TestDatabaseConnection:
 class TestParameterManager:
     """Tests for ParameterManager class with ORM."""
 
-    def test_parameter_manager_initialization(self, test_db_connection: DatabaseConnection) -> None:
+    def test_parameter_manager_initialization(self, clean_db: DatabaseConnection) -> None:
         """Test parameter manager can be initialized."""
-        pm = ParameterManager(db_connection=test_db_connection, auto_create_tables=False)
+        pm = ParameterManager(db_connection=clean_db, auto_create_tables=False)
         assert pm.db is not None
 
-    def test_set_and_get_parameter(self, test_db_connection: DatabaseConnection) -> None:
+    def test_set_and_get_parameter(self, clean_db: DatabaseConnection) -> None:
         """Test setting and getting a parameter."""
-        pm = ParameterManager(db_connection=test_db_connection, auto_create_tables=False)
+        pm = ParameterManager(db_connection=clean_db, auto_create_tables=False)
 
         # Set parameter
         pm.set_parameter("test_pipeline", "test_key", "test_value", "Test description")
@@ -69,18 +80,18 @@ class TestParameterManager:
         assert value == "test_value"
 
     def test_get_parameter_returns_default_when_not_found(
-        self, test_db_connection: DatabaseConnection
+        self, clean_db: DatabaseConnection
     ) -> None:
         """Test that default value is returned when parameter not found."""
-        pm = ParameterManager(db_connection=test_db_connection, auto_create_tables=False)
+        pm = ParameterManager(db_connection=clean_db, auto_create_tables=False)
         result = pm.get_parameter("nonexistent", "test_key", "default_value")
         assert result == "default_value"
 
     def test_set_parameter_with_complex_value(
-        self, test_db_connection: DatabaseConnection
+        self, clean_db: DatabaseConnection
     ) -> None:
         """Test storing complex JSON values."""
-        pm = ParameterManager(db_connection=test_db_connection, auto_create_tables=False)
+        pm = ParameterManager(db_connection=clean_db, auto_create_tables=False)
 
         complex_value = {
             "symbols": ["BTC/USDT", "ETH/USDT"],
@@ -93,9 +104,9 @@ class TestParameterManager:
         assert result == complex_value
         assert isinstance(result, dict)
 
-    def test_update_existing_parameter(self, test_db_connection: DatabaseConnection) -> None:
+    def test_update_existing_parameter(self, clean_db: DatabaseConnection) -> None:
         """Test updating an existing parameter."""
-        pm = ParameterManager(db_connection=test_db_connection, auto_create_tables=False)
+        pm = ParameterManager(db_connection=clean_db, auto_create_tables=False)
 
         # Create parameter
         pm.set_parameter("test_pipeline", "test_key", "initial_value")
@@ -107,9 +118,9 @@ class TestParameterManager:
         value = pm.get_parameter("test_pipeline", "test_key")
         assert value == "updated_value"
 
-    def test_get_all_parameters(self, test_db_connection: DatabaseConnection) -> None:
+    def test_get_all_parameters(self, clean_db: DatabaseConnection) -> None:
         """Test getting all parameters for a pipeline."""
-        pm = ParameterManager(db_connection=test_db_connection, auto_create_tables=False)
+        pm = ParameterManager(db_connection=clean_db, auto_create_tables=False)
 
         # Set multiple parameters
         pm.set_parameter("test_pipeline", "key1", "value1")
@@ -124,9 +135,9 @@ class TestParameterManager:
         assert params["key2"] == "value2"
         assert "key3" not in params
 
-    def test_delete_parameter(self, test_db_connection: DatabaseConnection) -> None:
+    def test_delete_parameter(self, clean_db: DatabaseConnection) -> None:
         """Test deleting a parameter."""
-        pm = ParameterManager(db_connection=test_db_connection, auto_create_tables=False)
+        pm = ParameterManager(db_connection=clean_db, auto_create_tables=False)
 
         # Create parameter
         pm.set_parameter("test_pipeline", "test_key", "test_value")
@@ -140,16 +151,16 @@ class TestParameterManager:
         assert value == "default"
 
     def test_delete_nonexistent_parameter(
-        self, test_db_connection: DatabaseConnection
+        self, clean_db: DatabaseConnection
     ) -> None:
         """Test deleting a parameter that doesn't exist."""
-        pm = ParameterManager(db_connection=test_db_connection, auto_create_tables=False)
+        pm = ParameterManager(db_connection=clean_db, auto_create_tables=False)
         result = pm.delete_parameter("nonexistent", "test_key")
         assert result is False
 
-    def test_list_pipelines(self, test_db_connection: DatabaseConnection) -> None:
+    def test_list_pipelines(self, clean_db: DatabaseConnection) -> None:
         """Test listing all pipelines."""
-        pm = ParameterManager(db_connection=test_db_connection, auto_create_tables=False)
+        pm = ParameterManager(db_connection=clean_db, auto_create_tables=False)
 
         # Create parameters for different pipelines
         pm.set_parameter("pipeline1", "key1", "value1")
