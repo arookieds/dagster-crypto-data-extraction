@@ -89,12 +89,11 @@ def test_db_connection(monkeypatch, reset_db_connection) -> Generator[DatabaseCo
         monkeypatch.setattr("app.config.get_settings", lambda: test_settings)
         
         db = DatabaseConnection()
-        db.create_tables()
-
-        yield db
-
-        db.drop_tables()
-        db.close()
+        try:
+            db.create_tables()
+            yield db
+        finally:
+            db.close()
 
 
 @pytest.fixture
