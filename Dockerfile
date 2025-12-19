@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-LABEL maintainer="Your Name <your.email@example.com>"
+LABEL maintainer="Lior Gefen <lior@gefen.tech>"
 LABEL description="Dagster Crypto Data Extraction Pipeline"
 
 WORKDIR /app
