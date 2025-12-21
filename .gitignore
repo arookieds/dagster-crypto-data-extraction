@@ -104,3 +104,8 @@ docker-compose.override.yml
 # Kubernetes
 k8s/secrets.yaml
 k8s/*secret*.yaml
+
+# Gemini
+GEMINI.md
+.gemini/
+.dlt/secrets.toml
