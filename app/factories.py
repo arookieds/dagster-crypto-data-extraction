@@ -1,7 +1,7 @@
-
 """
 Asset factories for creating reusable Dagster assets.
 """
+
 from collections.abc import Iterator
 
 from dagster import AssetExecutionContext, MetadataValue, Output, asset
@@ -41,25 +41,22 @@ def create_crypto_asset(
         """
         Generic crypto data extraction asset.
         """
+
         context.log.info(f"Starting data extraction for {asset_name}")
 
         param_manager = ParameterManager()
         pipeline_name = f"{asset_name}_extraction"
 
         symbols = param_manager.get_parameter(pipeline_name, "symbols", config.symbols)
-        timeframe = param_manager.get_parameter(
-            pipeline_name, "timeframe", config.timeframe
-        )
+        timeframe = param_manager.get_parameter(pipeline_name, "timeframe", config.timeframe)
         limit = param_manager.get_parameter(pipeline_name, "limit", config.limit)
 
-        context.log.info(
-            f"Using symbols: {symbols}, timeframe: {timeframe}, limit: {limit}"
-        )
+        context.log.info(f"Using symbols: {symbols}, timeframe: {timeframe}, limit: {limit}")
 
         extractor = extractor_class()
 
         try:
-            pipeline = extractor.create_dlt_pipeline(pipeline_name)
+            pipeline = extractor.create_dlt_pipeline()
             results = {}
             data_preview = []
             total_rows = 0
@@ -102,9 +99,7 @@ def create_crypto_asset(
                             "loaded_at": ohlcv_info.finished_at,
                         }
 
-            context.log.info(
-                f"Extraction for {asset_name} completed", extra=results
-            )
+            context.log.info(f"Extraction for {asset_name} completed", extra=results)
 
             yield Output(
                 value=results,
@@ -121,4 +116,3 @@ def create_crypto_asset(
             extractor.close()
 
     return crypto_asset
-

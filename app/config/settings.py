@@ -8,7 +8,7 @@ Uses pydantic-settings for type-safe configuration with multi-environment suppor
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     )
 
     # Environment
-    environment: Literal["development", "staging", "production", "test"] = Field(
+    environment: Literal["development", "production", "test"] = Field(
         default="development",
         description="Application environment",
     )
@@ -163,46 +163,11 @@ class Settings(BaseSettings):
             db_path = self.data_dir / "parameters.db"
             return f"sqlite:///{db_path}"
 
-    @property
-    def dlt_destination_type(self) -> Literal["postgres", "duckdb", "s3"]:
-        """
-        Determine dlt destination based on environment.
-        """
-        if self.use_s3:
-            return "s3"
-        if self.use_postgres:
-            return "postgres"
-        return "duckdb"
 
-    @property
-    def dlt_dataset_name(self) -> str:
-        """
-        Get dlt dataset/schema name based on environment.
-        """
-        prefix = "crypto"
-        if self.use_s3:
-            return f"{self.s3_bucket_name}/{prefix}"
-        if self.use_postgres:
-            return f"{prefix}_prod"
-        return f"{prefix}_dev"
 
-    @property
-    def dlt_credentials(self) -> dict[str, str] | str | None:
-        """
-        Get dlt credentials based on destination.
-        """
-        if self.use_s3:
-            return {
-                "aws_access_key_id": self.s3_access_key_id,
-                "aws_secret_access_key": self.s3_secret_access_key,
-                "endpoint_url": self.s3_endpoint_url,
-            }
-        if self.use_postgres:
-            return self.database_url
-        
-        # DuckDB file path
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-        return str(self.data_dir / "crypto_data.duckdb")
+
+
+
 
     @property
     def duckdb_path(self) -> Path:
@@ -225,6 +190,17 @@ class Settings(BaseSettings):
         """Check if running in test environment."""
         return self.environment == "test"
 
+    @property
+    def dlt_destination_type(self) -> Literal["postgres", "duckdb", "filesystem"]:
+        """
+        Determine dlt destination based on environment.
+        """
+        if self.use_s3:
+            return "filesystem"
+        if self.use_postgres:
+            return "postgres"
+        return "duckdb"
+
     def get_environment_info(self) -> dict[str, str]:
         """
         Get environment configuration summary for logging.
@@ -233,10 +209,10 @@ class Settings(BaseSettings):
         return {
             "environment": self.environment,
             "database": "PostgreSQL" if self.use_postgres else "SQLite",
-            "dlt_destination": self.dlt_destination_type,
             "data_storage": data_storage,
             "log_level": self.log_level,
         }
+
 
 @lru_cache
 def get_settings() -> Settings:
@@ -250,4 +226,3 @@ def get_settings() -> Settings:
         Settings: Application settings instance
     """
     return Settings()
-

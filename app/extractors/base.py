@@ -40,6 +40,12 @@ class BaseExchanger(ABC):
         self.settings = get_settings()
         self.logger = logger.bind(exchange=exchange_id)
 
+        # Check if exchange_id is supported by CCXT, and if not, throw an error.
+        # It is a deliberate choice to have Dagster capture early an issue with
+        # the configuration.
+        if exchange_id not in ccxt.exchanges:
+            raise ValueError(f"Exchange '{exchange_id}' is not supported by CCXT")
+
         # Initialize CCXT exchange
         exchange_class = getattr(ccxt, exchange_id)
         self.exchange: ccxt.Exchange = exchange_class(
@@ -249,39 +255,33 @@ class BaseExchanger(ABC):
                 "volume": candle[5],
             }
 
-    def create_dlt_pipeline(self, pipeline_name: str | None = None) -> dlt.Pipeline:
+    def create_dlt_pipeline(self) -> dlt.Pipeline:
         """
-        Create a dlt pipeline for this exchange with environment-aware configuration.
+        Create a dlt pipeline with a fixed name, configured via environment.
 
-        Automatically configures DuckDB for local development or PostgreSQL
-        for production based on settings.
-
-        Args:
-            pipeline_name: Optional custom pipeline name
+        This approach allows dlt to handle its own configuration via environment
+        variables or config files, which is the best practice for production.
 
         Returns:
             Configured dlt pipeline
 
         Example:
-            # Local dev: uses DuckDB at .dagster_data/crypto_data.duckdb
-            # Production: uses PostgreSQL connection from env vars
+            # DLT configuration is loaded from environment variables:
+            # - CRYPTO_DATA_EXTRACTION__DESTINATION__FILESYSTEM__BUCKET_URL
+            # - CRYPTO_DATA_EXTRACTION__DESTINATION__...
         """
-        name = pipeline_name or f"{self.exchange_id}_extraction"
-
-        destination = self.settings.dlt_destination_type
-        dataset_name = f"{self.settings.dlt_dataset_name}_{self.exchange_id}"
-
+        pipeline_name = self.settings.dlt_pipeline_name
+        destination_type = self.settings.dlt_destination_type
         self.logger.info(
             "Creating dlt pipeline",
-            pipeline_name=name,
-            destination=destination,
-            dataset=dataset_name,
+            pipeline_name=pipeline_name,
+            destination=destination_type,
         )
 
+        # Explicitly passing destination as a workaround for discovery issues.
+        # dlt will still find credentials from the environment.
         pipeline = dlt.pipeline(
-            pipeline_name=name,
-            destination=destination,
-            dataset_name=dataset_name,
+            pipeline_name=pipeline_name, destination=destination_type
         )
 
         return pipeline

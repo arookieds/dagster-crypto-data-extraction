@@ -108,4 +108,4 @@ k8s/*secret*.yaml
 # Gemini
 GEMINI.md
 .gemini/
-.dlt/secrets.toml
+
