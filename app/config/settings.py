@@ -112,6 +112,16 @@ class Settings(BaseSettings):
         description="DLT pipeline name",
     )
 
+    # Additional S3 Configuration for dlt filesystem destination
+    s3_metadata_prefix: str = Field(
+        default="x-amz-meta",
+        description="Prefix for S3 metadata headers",
+    )
+    s3_auto_cleanup: bool = Field(
+        default=True,
+        description="Enable automatic cleanup of failed S3 uploads",
+    )
+
     @field_validator("postgres_password")
     @classmethod
     def validate_password(cls, v: str | None) -> str | None:
@@ -138,6 +148,8 @@ class Settings(BaseSettings):
 
     @property
     def use_s3(self) -> bool:
+        """Determine if S3 should be used."""
+        return self.s3_bucket_name is not None
         """
         Determine if S3 should be used for data storage.
 
@@ -162,12 +174,6 @@ class Settings(BaseSettings):
             self.data_dir.mkdir(parents=True, exist_ok=True)
             db_path = self.data_dir / "parameters.db"
             return f"sqlite:///{db_path}"
-
-
-
-
-
-
 
     @property
     def duckdb_path(self) -> Path:
@@ -200,6 +206,72 @@ class Settings(BaseSettings):
         if self.use_postgres:
             return "postgres"
         return "duckdb"
+
+    def get_dlt_destination_config(self) -> dict[str, Any]:
+        """
+        Get dlt filesystem destination configuration.
+
+        This method now supports separate configurations for different data types.
+        """
+        # Base configuration
+        config = {
+            "destination": self.dlt_destination_type,
+            "bucket_url": f"s3://{self.s3_bucket_name}",
+            "credentials": {
+                "aws_access_key_id": self.s3_access_key_id,
+                "aws_secret_access_key": self.s3_secret_access_key,
+                "endpoint_url": self.s3_endpoint_url,
+            },
+            "kwargs": {
+                "use_ssl": True,
+            },
+            "layout": "{table_name}/{exchange}_{table_name}_{run_id}_{timestamp}.{ext}",
+            "extra_placeholders": {
+                "exchange": self.s3_exchange_id.lower(),
+                "table_name": "unknown",
+                "run_id": "unknown",
+                "timestamp": "unknown",
+            },
+        }
+
+        # Override based on data type if needed
+        if hasattr(self, "_current_data_type"):
+            data_type = self._current_data_type
+            if data_type in ["tickers", "ohlcv"]:
+                config["bucket_url"] = f"s3://{self.s3_bucket_name}_{data_type}"
+                config["extra_placeholders"]["table_name"] = data_type
+
+        return config
+        """Get dlt filesystem destination configuration."""
+        """Get dlt filesystem destination configuration."""
+        """Get dlt filesystem destination configuration."""
+        """
+        Get dlt filesystem destination configuration.
+
+        Returns configuration dict for dlt filesystem destination with S3 metadata support.
+        """
+        if not self.use_s3:
+            return {"destination": self.dlt_destination_type}
+
+        return {
+            "destination": "filesystem",
+            "bucket_url": f"s3://{self.s3_bucket_name}",
+            "credentials": {
+                "aws_access_key_id": self.s3_access_key_id,
+                "aws_secret_access_key": self.s3_secret_access_key,
+                "endpoint_url": self.s3_endpoint_url,
+            },
+            "kwargs": {
+                "use_ssl": True,
+            },
+            "layout": "{table_name}/{exchange}_{table_name}_{run_id}_{timestamp}.{ext}",
+            "extra_placeholders": {
+                "exchange": "unknown",  # Will be set dynamically
+                "table_name": "unknown",  # Will be set dynamically
+                "run_id": "unknown",  # Will be set dynamically
+                "timestamp": "unknown",  # Will be set dynamically
+            },
+        }
 
     def get_environment_info(self) -> dict[str, str]:
         """

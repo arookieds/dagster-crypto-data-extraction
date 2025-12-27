@@ -7,10 +7,10 @@ spot, derivatives, and options trading data.
 
 from typing import Any
 
-from app.extractors.base import BaseExchanger
+from app.extractors.base_enhanced import BaseExchangerEnhanced
 
 
-class BybitExtractor(BaseExchanger):
+class BybitExtractor(BaseExchangerEnhanced):
     """
     Bybit exchange data extractor.
 

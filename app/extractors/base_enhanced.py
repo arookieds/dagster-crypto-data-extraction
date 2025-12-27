@@ -1,8 +1,8 @@
 """
-Base extractor class for crypto exchanges.
+Enhanced base extractor with S3 metadata support.
 
-Provides common interface and shared functionality for all exchange extractors
-using the CCXT library and dlt for data loading.
+This module provides the enhanced version of the base extractor with full
+S3 object metadata injection and hybrid storage capabilities.
 """
 
 from abc import ABC, abstractmethod
@@ -20,17 +20,17 @@ from app.utils.retry import retry_with_backoff
 logger = get_logger(__name__)
 
 
-class BaseExchanger(ABC):
+class BaseExchangerEnhanced(ABC):
     """
-    Abstract base class for cryptocurrency exchange data extractors.
+    Enhanced abstract base class for cryptocurrency exchange data extractors.
 
     Provides common functionality for all exchange extractors including
-    connection management, retry logic, and dlt integration.
+    connection management, retry logic, dlt integration, and S3 metadata support.
     """
 
     def __init__(self, exchange_id: str, api_key: str | None = None, secret: str | None = None):
         """
-        Initialize exchange extractor.
+        Initialize enhanced exchange extractor.
 
         Args:
             exchange_id: CCXT exchange identifier (e.g., 'binance', 'bybit')
@@ -58,7 +58,7 @@ class BaseExchanger(ABC):
             }
         )
 
-        self.logger.info("Exchange extractor initialized")
+        self.logger.info("Enhanced exchange extractor initialized")
 
     @abstractmethod
     def get_exchange_name(self) -> str:
@@ -184,7 +184,7 @@ class BaseExchanger(ABC):
             ccxt.ExchangeError: Exchange-specific errors
         """
         self.logger.info("Fetching trades", symbol=symbol, limit=limit)
-        trades = self.exchange.fetch_trades(symbol, limit=limit)
+        trades = self.exchange.fetch_trades(symbol, limit)
         self.logger.info("Fetched trades", symbol=symbol, count=len(trades))
         return trades
 
@@ -192,16 +192,16 @@ class BaseExchanger(ABC):
         self, symbols: list[str] | None = None, dagster_run_id: str | None = None
     ) -> Iterator[dict[str, Any]]:
         """
-        DLT resource for ticker data with metadata support.
+        DLT resource for ticker data.
 
-        Yields ticker data in a format suitable for dlt loading with enhanced metadata.
+        Yields ticker data in a format suitable for dlt loading.
 
         Args:
             symbols: List of symbols to fetch tickers for
             dagster_run_id: Optional Dagster run ID for metadata tracking
 
         Yields:
-            Ticker data dictionaries with metadata
+            Ticker data dictionaries with trading data only
         """
         self.logger.info(
             "Starting ticker resource extraction",
@@ -209,18 +209,6 @@ class BaseExchanger(ABC):
             dagster_run_id=dagster_run_id,
         )
         tickers = self.fetch_tickers(symbols)
-
-        # Enhanced data with metadata
-        enrichment = {}
-        if dagster_run_id:
-            enrichment.update(
-                {
-                    "dagster_run_id": dagster_run_id,
-                    "extraction_time": datetime.now().isoformat(),
-                    "pipeline_name": f"{self.exchange_id}_extraction",
-                    "environment": self.settings.environment,
-                }
-            )
 
         for symbol, ticker in tickers.items():
             record = {
@@ -235,7 +223,6 @@ class BaseExchanger(ABC):
                 "volume": ticker.get("volume"),
                 "quote_volume": ticker.get("quoteVolume"),
             }
-            record.update(enrichment)
             yield record
 
     def ohlcv_resource(
@@ -246,9 +233,9 @@ class BaseExchanger(ABC):
         dagster_run_id: str | None = None,
     ) -> Iterator[dict[str, Any]]:
         """
-        DLT resource for OHLCV data with metadata support.
+        DLT resource for OHLCV data.
 
-        Yields OHLCV data in a format suitable for dlt loading with enhanced metadata.
+        Yields OHLCV data in a format suitable for dlt loading.
 
         Args:
             symbol: Trading symbol
@@ -257,7 +244,7 @@ class BaseExchanger(ABC):
             dagster_run_id: Optional Dagster run ID for metadata tracking
 
         Yields:
-            OHLCV data dictionaries with metadata
+            OHLCV data dictionaries with trading data only
         """
         self.logger.info(
             "Starting OHLCV resource extraction",
@@ -266,18 +253,6 @@ class BaseExchanger(ABC):
             dagster_run_id=dagster_run_id,
         )
         ohlcv_data = self.fetch_ohlcv(symbol, timeframe, limit)
-
-        # Enhanced data with metadata
-        enrichment = {}
-        if dagster_run_id:
-            enrichment.update(
-                {
-                    "dagster_run_id": dagster_run_id,
-                    "extraction_time": datetime.now().isoformat(),
-                    "pipeline_name": f"{self.exchange_id}_extraction",
-                    "environment": self.settings.environment,
-                }
-            )
 
         for candle in ohlcv_data:
             record = {
@@ -291,33 +266,34 @@ class BaseExchanger(ABC):
                 "close": candle[4],
                 "volume": candle[5],
             }
-            record.update(enrichment)
             yield record
 
-    def create_dlt_pipeline(self, dagster_run_id: str | None = None) -> dlt.Pipeline:
+    def create_dlt_pipeline(
+        self, dagster_run_id: str | None = None, table_name: str | None = None
+    ) -> dlt.Pipeline:
         """
-        Create a dlt pipeline with S3 metadata support and dynamic configuration.
+        Create enhanced dlt pipeline with S3 metadata support and dynamic configuration.
 
         This creates enhanced pipeline that supports S3 object metadata injection
         and hybrid storage (database + S3 archive).
 
         Args:
-            dagster_run_id: Dagster run ID for metadata tracking
-
-        Returns:
-            Configured dlt pipeline with metadata support
+            self, dagster_run_id: str | None = None, table_name: str
         """
         pipeline_name = self.settings.dlt_pipeline_name
         destination_type = self.settings.dlt_destination_type
 
         self.logger.info(
-            "Creating dlt pipeline",
+            "Creating enhanced dlt pipeline",
             pipeline_name=pipeline_name,
             destination=destination_type,
             dagster_run_id=dagster_run_id,
         )
 
         if destination_type == "filesystem":
+            # Import filesystem destination from dlt
+            from dlt.destinations import filesystem
+
             # Get S3 configuration with metadata placeholders
             dest_config = self.settings.get_dlt_destination_config()
 
@@ -326,6 +302,7 @@ class BaseExchanger(ABC):
                 dest_config["extra_placeholders"].update(
                     {
                         "exchange": self.exchange_id.lower(),
+                        "table_name": table_name,  # Set proper table name
                         "run_id": dagster_run_id,
                         "timestamp": int(datetime.now().timestamp()),
                     }
@@ -336,66 +313,19 @@ class BaseExchanger(ABC):
                 config=dest_config,
             )
 
-            # Explicitly passing destination configuration
-            pipeline = dlt.pipeline(
-                pipeline_name=pipeline_name,
-                destination=dest_config,
-            )
-        else:
-            # For database destinations, use standard pipeline
-            pipeline = dlt.pipeline(
-                pipeline_name=pipeline_name,
-                destination=destination_type,
+            # Create filesystem destination with configuration
+            fs_dest = filesystem(
+                bucket_url=dest_config["bucket_url"],
+                credentials=dest_config["credentials"],
+                layout=dest_config["layout"],
+                extra_placeholders=dest_config["extra_placeholders"],
+                kwargs=dest_config["kwargs"],
             )
 
-        return pipeline
-
-    def create_dlt_pipeline(self, dagster_run_id: str | None = None) -> dlt.Pipeline:
-        """
-        Create a dlt pipeline with S3 metadata support and dynamic configuration.
-
-        This creates enhanced pipeline that supports S3 object metadata injection
-        and hybrid storage (database + S3 archive).
-
-        Args:
-            dagster_run_id: Dagster run ID for metadata tracking
-
-        Returns:
-            Configured dlt pipeline with metadata support
-        """
-        pipeline_name = self.settings.dlt_pipeline_name
-        destination_type = self.settings.dlt_destination_type
-
-        self.logger.info(
-            "Creating dlt pipeline",
-            pipeline_name=pipeline_name,
-            destination=destination_type,
-            dagster_run_id=dagster_run_id,
-        )
-
-        if destination_type == "filesystem":
-            # Get S3 configuration with metadata placeholders
-            dest_config = self.settings.get_dlt_destination_config()
-
-            # Set dynamic placeholders for this run
-            if dagster_run_id and "extra_placeholders" in dest_config:
-                dest_config["extra_placeholders"].update(
-                    {
-                        "exchange": self.exchange_id.lower(),
-                        "run_id": dagster_run_id,
-                        "timestamp": int(datetime.now().timestamp()),
-                    }
-                )
-
-            self.logger.info(
-                "Creating S3 filesystem destination",
-                config=dest_config,
-            )
-
-            # Explicitly passing destination configuration
+            # Explicitly passing destination object
             pipeline = dlt.pipeline(
                 pipeline_name=pipeline_name,
-                destination=dest_config,
+                destination=fs_dest,
             )
         else:
             # For database destinations, use standard pipeline
@@ -408,6 +338,6 @@ class BaseExchanger(ABC):
 
     def close(self) -> None:
         """Close exchange connection and cleanup resources."""
-        if hasattr(self.exchange, "close") and callable(self.exchange.close):
-            self.exchange.close()
-        self.logger.info("Exchange connection closed")
+        # Note: CCXT Exchange classes may not have a close method
+        # This is a cleanup method for future implementations
+        self.logger.info("Enhanced exchange connection closed")

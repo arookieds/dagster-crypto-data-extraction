@@ -8,10 +8,10 @@ spot, futures, and margin trading data.
 from collections.abc import Iterator
 from typing import Any
 
-from app.extractors.base import BaseExchanger
+from app.extractors.base_enhanced import BaseExchangerEnhanced
 
 
-class BinanceExtractor(BaseExchanger):
+class BinanceExtractor(BaseExchangerEnhanced):
     """
     Binance exchange data extractor.
 

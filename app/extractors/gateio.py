@@ -7,10 +7,10 @@ spot, margin, and futures trading data.
 
 from typing import Any
 
-from app.extractors.base import BaseExchanger
+from app.extractors.base_enhanced import BaseExchangerEnhanced
 
 
-class GateioExtractor(BaseExchanger):
+class GateioExtractor(BaseExchangerEnhanced):
     """
     Gate.io exchange data extractor.
 

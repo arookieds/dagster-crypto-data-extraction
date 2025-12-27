@@ -184,7 +184,22 @@ SELECT * FROM crypto_prod_binance.tickers;
 ```
 
 **S3/MinIO:**
-You can use any S3 client to access the data in your bucket. The data is stored in JSONL format.
+You can use any S3 client to access the data in your bucket. The data is stored in JSONL format with the following organization:
+
+```
+{table_name}/{exchange}_{table_name}_{run_id}_{timestamp}.jsonl
+```
+
+Example:
+```
+tickers/binance_tickers_abc123_20250123_163022.jsonl
+ohlcv/binance_ohlcv_abc123_20250123_163022.jsonl
+```
+
+This structure provides:
+- **Table grouping** by data type (tickers, ohlcv)
+- **Descriptive filenames** with exchange, data type, run ID, and timestamp
+- **Easy filtering** by table name and exchange
 
 ## Configuration
 
